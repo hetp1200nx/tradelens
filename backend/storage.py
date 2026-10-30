@@ -67,6 +67,7 @@ class Store:
                                       data=json.dumps({"id": row["id"], "data": row}), timeout=15).raise_for_status()
                 except Exception as e:
                     self.error = f"Supabase save failed: {e}"
+                    print(f"[TradeLens] {self.error}", flush=True)
             threading.Thread(target=go, daemon=True).start()
         else:
             with _lock:
@@ -80,9 +81,10 @@ class Store:
                         requests.delete(f"{C.SUPABASE_URL}/rest/v1/app_kv?key=eq.{requests.utils.quote(key)}", headers=self._h(), timeout=15)
                     else:
                         requests.post(f"{C.SUPABASE_URL}/rest/v1/app_kv", headers=self._h({"Prefer": "resolution=merge-duplicates"}),
-                                      data=json.dumps({"key": key, "value": value}), timeout=15)
+                                      data=json.dumps({"key": key, "value": value}), timeout=15).raise_for_status()
                 except Exception as e:
                     self.error = f"Supabase save failed: {e}"
+                    print(f"[TradeLens] {self.error}", flush=True)
             threading.Thread(target=go, daemon=True).start()
         else:
             with _lock:

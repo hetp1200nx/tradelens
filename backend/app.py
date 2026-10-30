@@ -284,7 +284,8 @@ async def profile(request):
 
 def _maybe_first_feed(uid):
     """If nothing powers live prices yet, the first user to add a working API does (after an automatic restart)."""
-    if FEED_SRC == "demo" and C.DATA_MODE == "auto" and not store().kv.get("data_user"):
+    cur = store().kv.get("data_user")
+    if FEED_SRC == "demo" and C.DATA_MODE != "demo" and not (cur and cur != uid and U.angel_creds(cur)):
         store().set_kv("data_user", uid)
         RESTART()
 
@@ -308,7 +309,7 @@ async def profile_angel(request):
     BROKERS.reset(u["id"])
     if ok:
         _maybe_first_feed(u["id"])
-    return J({"ok": True, "user": U.public(u), "restarting": ok and FEED_SRC == "demo" and store().kv.get("data_user") == u["id"]})
+    return J({"ok": True, "user": U.public(u), "restarting": ok and FEED_SRC == "demo" and C.DATA_MODE != "demo" and store().kv.get("data_user") == u["id"]})
 
 
 async def profile_password(request):
