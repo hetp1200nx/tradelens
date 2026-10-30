@@ -180,7 +180,7 @@ function renderBoard() {
     <td><b>${esc(r.sym)}</b></td><td class="num">${nf(r.ltp)}</td><td class="num ${cls(r.chg)}">${sgn(r.chg)}%</td>
     <td class="num ${r.vol_ratio >= 1.5 ? "warnc" : ""}">${nf(r.vol_ratio, 1)}×</td>
     <td><span class="press" title="buy ${nf(r.buy_qty, 0)} / sell ${nf(r.sell_qty, 0)}"><i style="width:${(r.pressure + 1) * 50}%"></i></span></td>
-    <td class="num hide-m ${cls(r.oi_chg)}">${r.is_fno ? sgn(r.oi_chg) + "%" : "–"}</td>
+    <td class="num hide-m ${cls(r.oi_chg)}">${r.is_fno && r.oi_chg != null ? sgn(r.oi_chg) + "%" : "–"}</td>
     <td class="hide-m">${r.oi_signal ? `<span class="tag ${/Long b|Short c/.test(r.oi_signal) ? "up" : "down"}">${r.oi_signal}</span>` : ""}</td>
     <td class="num">${r.choppy ? '<span class="muted">0</span>' : `<span class="${cls(r.direction)}">${nf(r.strength, 0)}</span>`}</td>
     <td><span class="tag ${r.choppy ? "" : r.direction > 0 ? "up" : "down"}">${r.bias}</span>${wl ? ` <button class="btn sm rm" data-rm="${esc(r.sym)}" title="Remove from watchlist">✕</button>` : ""}</td></tr>`).join("")
@@ -381,7 +381,7 @@ function renderDetail(live) {
     ["Open", nf(q.open)], ["Prev close", nf(q.prev_close)], ["High", nf(q.high)], ["Low", nf(q.low)],
     ["Volume", vol(q.volume)], ["Vol vs normal", m.vol_ratio ? nf(m.vol_ratio, 1) + "×" : "–"],
     ["Avg price (VWAP)", nf(q.avg_price)], ["Strength", m.choppy ? "0 (choppy)" : nf(m.strength, 0)],
-    ["Open interest", q.is_fno && q.oi ? vol(q.oi) : "–"], ["OI change", q.is_fno && q.oi ? `<span class="${cls(q.oi_chg)}">${sgn(q.oi_chg)}%</span>` : "–"],
+    ["Open interest", q.is_fno && q.oi ? vol(q.oi) : "–"], ["OI change", q.is_fno && q.oi && q.oi_chg != null ? `<span class="${cls(q.oi_chg)}">${sgn(q.oi_chg)}%</span>` : "–"],
     ["OI view", m.oi_signal || "–"], ["Lot size", q.lot || "–"],
     ["Upper circuit", nf(q.uc)], ["Lower circuit", nf(q.lc)], ["52w high", nf(q.w52h)], ["52w low", nf(q.w52l)],
   ];
