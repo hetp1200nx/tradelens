@@ -24,8 +24,9 @@ def feed_creds():
         return U.angel_creds(uid), f"user {U.get(uid)['username']}"
     if C.DATA_MODE != "demo":
         # nobody chosen (or that user removed their API): use the first account whose Angel API checked out
-        for u in sorted(store().users.values(), key=lambda x: x.get("created") or 0):
-            if not u.get("disabled") and (u.get("angel") or {}).get("status") == "connected" and U.angel_creds(u["id"]):
+        # (accounts whose API last checked out first; a temporary Angel error must not drop us to demo)
+        for u in sorted(store().users.values(), key=lambda x: ((x.get("angel") or {}).get("status") != "connected", x.get("created") or 0)):
+            if not u.get("disabled") and U.angel_creds(u["id"]):
                 store().set_kv("data_user", u["id"])
                 return U.angel_creds(u["id"]), f"user {u['username']}"
     return None, ""
