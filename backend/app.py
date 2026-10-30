@@ -160,7 +160,7 @@ def detail_payload(st) -> dict:
         q = {"sym": st.sym, "name": st.name, "exch": st.exch, "ltp": st.ltp, "open": st.open, "high": st.high,
              "low": st.low, "prev_close": st.prev_close, "volume": st.volume, "avg_price": st.avg_price,
              "buy_qty": st.buy_qty, "sell_qty": st.sell_qty, "bids": st.bids[:5], "asks": st.asks[:5],
-             "oi": st.oi, "oi_chg": round(st.oi_chg_pct, 2), "uc": st.uc, "lc": st.lc, "w52h": st.w52h,
+             "oi": st.oi, "oi_chg": round(st.oi_chg_pct, 2) if getattr(st, "oi_chg_ok", True) else None, "uc": st.uc, "lc": st.lc, "w52h": st.w52h,
              "w52l": st.w52l, "lot": st.lot, "is_fno": st.is_fno, "is_index": st.is_index,
              "avg_vol20": st.avg_vol20, "atr_pct": round(st.atr_pct, 2), "ts": MARKET.clock()}
         m = dict(st.metrics)

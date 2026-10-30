@@ -32,6 +32,7 @@ class Stock:
         self.asks: list[dict] = []
         self.oi = 0.0
         self.oi_chg_pct = 0.0
+        self.oi_chg_ok = True
         self.uc = self.lc = 0.0
         self.w52h = self.w52l = 0.0
         self.last_ts = 0
@@ -112,6 +113,9 @@ class Stock:
         norm = chg / atr_pct
         sod = A.ist_seconds_of_day(now)
         frac = min(1.0, max(0.06, (sod - A.SESSION_OPEN) / (A.SESSION_CLOSE - A.SESSION_OPEN)))
+        last_day = A.ist_day_start(self.m1[-1]["t"]) if self.m1 else A.ist_day_start(now)
+        if sod < A.SESSION_OPEN or last_day < A.ist_day_start(now):
+            frac = 1.0   # market not open yet / weekend / holiday: volume shown is the last full session
         exp_vol = self.avg_vol20 * frac
         vol_ratio = self.volume / exp_vol if exp_vol else 1.0
         tot = self.buy_qty + self.sell_qty
@@ -160,7 +164,7 @@ class Stock:
             "open": self.open, "high": self.high, "low": self.low, "prev_close": pc,
             "volume": self.volume, "vol_ratio": round(vol_ratio, 2), "pressure": round(pressure, 3),
             "buy_qty": self.buy_qty, "sell_qty": self.sell_qty,
-            "oi": self.oi, "oi_chg": round(self.oi_chg_pct, 2), "oi_signal": oi_sig,
+            "oi": self.oi, "oi_chg": round(self.oi_chg_pct, 2) if self.oi_chg_ok else None, "oi_signal": oi_sig,
             "strength": round(strength, 1), "liquidity": round(liquidity, 1),
             "direction": direction, "bias": bias, "choppy": choppy, "is_fno": self.is_fno,
             "atr_pct": round(atr_pct, 2), "is_index": self.is_index,
