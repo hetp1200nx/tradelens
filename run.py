@@ -22,6 +22,12 @@ def feed_creds():
     uid = store().kv.get("data_user")
     if uid and U.angel_creds(uid):
         return U.angel_creds(uid), f"user {U.get(uid)['username']}"
+    if C.DATA_MODE != "demo":
+        # nobody chosen (or that user removed their API): use the first account whose Angel API checked out
+        for u in sorted(store().users.values(), key=lambda x: x.get("created") or 0):
+            if not u.get("disabled") and (u.get("angel") or {}).get("status") == "connected" and U.angel_creds(u["id"]):
+                store().set_kv("data_user", u["id"])
+                return U.angel_creds(u["id"]), f"user {u['username']}"
     return None, ""
 
 
@@ -34,15 +40,18 @@ def make_feed():
     return AngelFeed(MARKET, creds), src
 
 
-def restart_soon(delay=1.5):
+def restart_soon(delay=4):
     """Restart the server (used after admin changes which API powers live prices)."""
     def go():
+        print("[TradeLens] restarting to switch live-price source", flush=True)
         os.execv(sys.executable, [sys.executable] + sys.argv)
     threading.Timer(delay, go).start()
 
 
 U.ensure_admin()
 feed, feed_src = make_feed()
+print(f"[TradeLens] starting: {'DEMO prices' if feed_src == 'demo' else 'LIVE prices via ' + feed_src}"
+      f" | storage: {'Supabase' if store().supa else 'local file'}", flush=True)
 feed.start()
 engine = Engine(feed)
 engine.start()
