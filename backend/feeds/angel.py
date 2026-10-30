@@ -92,15 +92,69 @@ class AngelFeed:
         self.login_day = _today_str()
 
     # ------------------------------------------------------------ instruments
+    @staticmethod
+    def _iter_json_array(path):
+        """Read a big JSON array one object at a time (keeps memory low on small servers)."""
+        dec = json.JSONDecoder()
+        buf, started = "", False
+        with open(path, encoding="utf-8") as f:
+            while True:
+                chunk = f.read(1 << 20)
+                buf += chunk
+                if not started:
+                    i = buf.find("[")
+                    if i < 0:
+                        if not chunk:
+                            return
+                        continue
+                    buf, started = buf[i + 1:], True
+                pos, n = 0, len(buf)
+                while True:
+                    while pos < n and buf[pos] in " \r\n\t,":
+                        pos += 1
+                    if pos >= n or buf[pos] == "]":
+                        break
+                    try:
+                        obj, end = dec.raw_decode(buf, pos)
+                    except ValueError:
+                        break
+                    yield obj
+                    pos = end
+                buf = buf[pos:]
+                if not chunk:
+                    return
+
     def _scrip_master(self) -> list[dict]:
-        f = CACHE / f"scripmaster_{_today_str()}.json"
+        """Instrument list, trimmed to what TradeLens uses (NSE shares, stock futures, live options)."""
+        f = CACHE / f"scripmaster_slim_{_today_str()}.json"
         if f.exists():
             return json.loads(f.read_text())
-        for old in CACHE.glob("scripmaster_*.json"):
+        for old in list(CACHE.glob("scripmaster_*.json")) + list(CACHE.glob("scripmaster_*.raw")):
             old.unlink(missing_ok=True)
-        data = requests.get(SCRIP_URL, timeout=90).json()
-        f.write_text(json.dumps(data))
-        return data
+        raw = CACHE / f"scripmaster_{_today_str()}.raw"
+        with requests.get(SCRIP_URL, timeout=120, stream=True) as r:
+            r.raise_for_status()
+            with open(raw, "wb") as out:
+                for part in r.iter_content(1 << 20):
+                    out.write(part)
+        today = datetime.now(IST_TZ).date()
+        keep = ("token", "symbol", "name", "expiry", "strike", "lotsize", "instrumenttype", "exch_seg", "tick_size")
+        rows = []
+        for r in self._iter_json_array(raw):
+            seg, it = r.get("exch_seg"), r.get("instrumenttype")
+            if seg == "NSE" and str(r.get("symbol", "")).endswith("-EQ"):
+                pass
+            elif (it == "FUTSTK" and seg == "NFO") or (it in ("OPTSTK", "OPTIDX") and seg in ("NFO", "BFO")):
+                ex = _expiry_date(r.get("expiry", ""))
+                if not ex or ex < today:
+                    continue
+            else:
+                continue
+            rows.append({k: r[k] for k in keep if k in r})
+        raw.unlink(missing_ok=True)
+        f.write_text(json.dumps(rows))
+        print(f"[TradeLens] instruments loaded: {len(rows)}", flush=True)
+        return rows
 
     def _build_universe(self):
         sm = self._scrip_master()
@@ -464,6 +518,7 @@ class AngelFeed:
                 self.login()
                 self.m.status = "loading instruments…"
                 self._build_universe()
+                import gc; gc.collect()
                 self._load_daily()
                 from .. import watch
                 ranked = sorted((s for s in self.m.stocks.values() if s.is_fno), key=lambda s: -(s.atr_pct or 0))
@@ -475,7 +530,9 @@ class AngelFeed:
                 for i in range(0, len(pairs), TOKENS_PER_CONN):
                     self.subscribe(pairs[i:i + TOKENS_PER_CONN])
                 threading.Thread(target=self._status_loop, daemon=True).start()
+                print("[TradeLens] LIVE: Angel One prices streaming", flush=True)
             except Exception as e:
                 self.error = str(e)
                 self.m.status = f"ERROR: {e}"
+                print(f"[TradeLens] Angel One feed error: {e}", flush=True)
         threading.Thread(target=boot, daemon=True).start()
