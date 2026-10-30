@@ -43,16 +43,31 @@ class UserBroker:
             raise RuntimeError((res or {}).get("message") or "no response")
         return res.get("data")
 
+    def _shared_api(self, creds):
+        """If this user's account also powers the live prices, reuse that Angel session (no second login)."""
+        fc = getattr(self.feed, "creds", None) or {}
+        api = getattr(self.feed, "api", None)
+        if api is not None and fc.get("client_code") == creds.get("client_code") and fc.get("api_key") == creds.get("api_key"):
+            return api
+        return None
+
     def _loop(self):
         n = 0
         while not self.stop:
             idle = time.time() - self.last_access > ACTIVE_SECS
+            wait = 60 if idle else 5
+            stage = "login"
             try:
                 creds = U.angel_creds(self.uid)
                 if not creds:
                     raise RuntimeError("Angel One details missing")
-                if self.api is None or self.day != time.strftime("%Y%m%d"):
+                shared = self._shared_api(creds)
+                if shared is not None:
+                    self.api = shared
+                elif self.api is None or self.day != time.strftime("%Y%m%d"):
                     self._login(creds)
+                U.mark_angel(self.uid, "connected", "")
+                stage = "data"
                 acct = dict(self.acct)
                 acct["funds"] = norm_funds(self._call(self.api.rmsLimit))
                 pos = self._call(self.api.position)
@@ -67,15 +82,25 @@ class UserBroker:
                 self.acct = acct
                 if hasattr(self.feed, "watch_tokens"):
                     self.feed.watch_tokens([(x["exch"], x["token"]) for x in acct["holdings"] + acct["positions"]])
-                U.mark_angel(self.uid, "connected", "")
             except Exception as e:
                 msg = str(e)
-                if "token" in msg.lower() or "session" in msg.lower() or "invalid" in msg.lower():
+                low = msg.lower()
+                if stage == "login":
+                    # wrong key / PIN / TOTP: this is something the user must fix in Profile
                     self.api = None
-                self.acct = {**self.acct, "error": f"Angel One: {msg}. Check your API details in Profile; the key must be a 'Trading API' key."}
-                U.mark_angel(self.uid, "error", msg)
+                    self.acct = {**self.acct, "error": f"Angel One login failed: {msg}. Check your API details in Profile; the key must be a 'Trading API' key."}
+                    U.mark_angel(self.uid, "error", msg)
+                else:
+                    # login is fine; Angel's account service didn't answer (common late at night / maintenance)
+                    if "token" in low or "session" in low or "invalid" in low or "expired" in low:
+                        self.api = None
+                    when = time.strftime("%H:%M", time.gmtime(self.acct["updated"] + 19800)) if self.acct.get("updated") else ""
+                    self.acct = {**self.acct, "error": f"Angel One's account service isn't answering right now ({msg}). "
+                                 f"Your API is fine; retrying automatically every 30 s{' - showing figures from ' + when if when else ''}. "
+                                 "This is common at night and during Angel's maintenance."}
+                    wait = max(wait, 30)
             n += 1
-            time.sleep(60 if idle else 5)
+            time.sleep(wait)
 
 
 class Brokers:
