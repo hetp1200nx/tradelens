@@ -8,6 +8,7 @@ Login is automatic every morning using your TOTP secret (no daily manual step).
 from __future__ import annotations
 
 import json
+import math
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -362,8 +363,16 @@ class AngelFeed:
                 if role == "fut":
                     if msg.get("open_interest") is not None:
                         st.oi = float(msg["open_interest"])
-                    if msg.get("open_interest_change_percentage") is not None:
-                        st.oi_chg_pct = float(msg["open_interest_change_percentage"])
+                    v = msg.get("open_interest_change_percentage")
+                    try:
+                        v = float(v) if v is not None else None
+                    except (TypeError, ValueError):
+                        v = None
+                    if v is not None and math.isfinite(v) and abs(v) <= 500:
+                        st.oi_chg_pct, st.oi_chg_ok = v, True
+                    elif v is not None:
+                        # Angel sometimes sends a corrupt value here; show "–" instead of nonsense
+                        st.oi_chg_pct, st.oi_chg_ok = 0.0, False
                     return
                 ltp = float(msg.get("last_traded_price", 0)) / div
                 if msg.get("open_price_of_the_day"):
