@@ -1,0 +1,25 @@
+# Render Blueprint: Render dashboard -> New -> Blueprint -> pick this GitHub repo.
+services:
+  - type: web
+    name: tradelens
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: pip install -r requirements.txt
+    startCommand: python run.py
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: DATA_MODE
+        value: auto
+      - key: SECRET_KEY            # keeps logins and encrypted Angel details valid across restarts
+        generateValue: true
+      - key: ADMIN_USERNAME
+        sync: false                # you type these in when creating the Blueprint
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
