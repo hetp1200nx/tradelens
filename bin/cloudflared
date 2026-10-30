@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+echo "INF Requesting new quick Tunnel on trycloudflare.com..."
+echo "INF +--------------------------------------------------------------------------------------------+"
+echo "INF |  Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):  |"
+echo "INF |  https://brave-lion-sample-test.trycloudflare.com                                          |"
+echo "INF +--------------------------------------------------------------------------------------------+"
+sleep 30
