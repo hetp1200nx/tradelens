@@ -447,7 +447,7 @@ async def flow(request):
 async def wideflow(request):
     view = request.query_params.get("view", "nifty50")
     syms = W.user_list(uid_of(request)) if view == "watchlist" else MARKET.groups.get(view, [])
-    return J(await run_in_threadpool(V.wide_flow, ENGINE, list(syms)))
+    return J(await run_in_threadpool(V.wide_flow, ENGINE, list(syms), 3, 6, FEED))
 
 
 async def watch_import(request):

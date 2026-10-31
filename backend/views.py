@@ -65,6 +65,7 @@ def flow(syms: list[str]) -> dict:
     now = MARKET.clock()
     open_t = A.ist_day_start(now) + A.SESSION_OPEN
     items, sectors = [], {}
+    last_slot = -1
     for s in syms:
         st = MARKET.stocks.get(s)
         if not st or not st.metrics:
@@ -76,7 +77,11 @@ def flow(syms: list[str]) -> dict:
         if not pc:
             continue
         c5 = A.resample(today, 5)
-        path = [[int((c["t"] - open_t) // 300), round((c["c"] - pc) / pc * 100, 3)] for c in c5]
+        # slots counted from the open of the session the candles belong to (last session on weekends/holidays)
+        o_t = (A.ist_day_start(c5[-1]["t"]) + A.SESSION_OPEN) if c5 else open_t
+        path = [[int((c["t"] - o_t) // 300), round((c["c"] - pc) / pc * 100, 3)] for c in c5]
+        if path:
+            last_slot = max(last_slot, path[-1][0])
         last = c5[-24:]
         mv = max([c["v"] for c in last] or [1]) or 1
         vbars = [round(c["v"] / mv * (1 if c["c"] >= c["o"] else -1), 3) for c in last]
@@ -89,6 +94,9 @@ def flow(syms: list[str]) -> dict:
         g["sum"] += m["chg"]
         g["adv"] += m["chg"] > 0
         g["dec"] += m["chg"] < 0
+    live_slot = (now - open_t) // 300
+    # market open today and candles keep up -> live clock; otherwise (weekend, holiday, after restart) the last candle
+    now_slot = max(0, live_slot) if last_slot < 0 or (now >= open_t and last_slot >= live_slot - 3) else last_slot
     secs = sorted(({**g, "chg": round(g["sum"] / g["n"], 2)} for g in sectors.values() if g["n"]), key=lambda g: -g["chg"])
     bulls = sorted([i for i in items if i["direction"] > 0 and not i["choppy"]], key=lambda i: -i["strength"])
     bears = sorted([i for i in items if i["direction"] < 0 and not i["choppy"]], key=lambda i: -i["strength"])
@@ -96,14 +104,14 @@ def flow(syms: list[str]) -> dict:
             "bear_count": sum(1 for i in items if i["chg"] < 0), "bulls": [i["sym"] for i in bulls[:16]],
             "bears": [i["sym"] for i in bears[:16]], "leading": secs[0] if secs else None,
             "lagging": secs[-1] if secs else None, "slots": (A.SESSION_CLOSE - A.SESSION_OPEN) // 300,
-            "now_slot": max(0, (now - open_t) // 300), "ts": now}
+            "now_slot": now_slot, "ts": now}
 
 
 # ------------------------------------------------------------------ Excel / CSV import
 HEADER_RX = re.compile(r"symbol|stock|share|scrip|ticker|instrument|name|company|code", re.I)
 
 
-def wide_flow(engine, syms: list[str], big: int = 3, mid: int = 6) -> dict:
+def wide_flow(engine, syms: list[str], big: int = 3, mid: int = 6, feed=None) -> dict:
     """Wide Flow: Market Flow lines + bullish / bearish split + tiered tiles (big cards with levels for the leaders)."""
     f = flow(syms)
     items = f["items"]
@@ -123,6 +131,11 @@ def wide_flow(engine, syms: list[str], big: int = 3, mid: int = 6) -> dict:
             st = MARKET.stocks.get(it["sym"])
             if not st:
                 continue
+            if feed is not None and not st.hist_loaded and hasattr(feed, "ensure_history"):
+                try:
+                    feed.ensure_history(st)   # last sessions' candles, so the big card has a chart even when the market is shut
+                except Exception:
+                    pass
             try:
                 c = card(engine, st)
             except Exception:
