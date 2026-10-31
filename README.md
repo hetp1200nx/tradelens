@@ -10,6 +10,9 @@ TradeLens only **reads** market data and your account. It never places, changes 
 > **Disclaimer:** educational tool, not investment advice. The suggestions are rules, not predictions, and no rule wins every trade.
 > Do your own research before trading. Sharing or selling signals to others needs SEBI registration.
 
+> **Just want to see it?** The [`demo`](demo/) folder is a full copy that runs on a simulated market with a ready-made login
+> (**Demo / demo@123**) and a virtual ₹1,00,000 wallet. No Angel One account needed. See [demo/README.md](demo/README.md).
+
 ---
 
 ## Contents
