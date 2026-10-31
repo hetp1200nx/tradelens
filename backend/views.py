@@ -82,7 +82,8 @@ def flow(syms: list[str]) -> dict:
         vbars = [round(c["v"] / mv * (1 if c["c"] >= c["o"] else -1), 3) for c in last]
         items.append({"sym": s, "sector": st.sector, "chg": m["chg"], "ltp": m["ltp"], "strength": m["strength"],
                       "direction": m["direction"], "choppy": m["choppy"], "vol_ratio": m["vol_ratio"],
-                      "pressure": m["pressure"], "path": path, "vbars": vbars})
+                      "pressure": m["pressure"], "path": path, "vbars": vbars,
+                      "oi_signal": m.get("oi_signal") or "", "bias": m.get("bias") or "", "vwap": _r(st.avg_price or None), "ab_chg": _r(m["ltp"] - pc)})
         g = sectors.setdefault(st.sector, {"sector": st.sector, "n": 0, "sum": 0.0, "adv": 0, "dec": 0})
         g["n"] += 1
         g["sum"] += m["chg"]
@@ -100,6 +101,41 @@ def flow(syms: list[str]) -> dict:
 
 # ------------------------------------------------------------------ Excel / CSV import
 HEADER_RX = re.compile(r"symbol|stock|share|scrip|ticker|instrument|name|company|code", re.I)
+
+
+def wide_flow(engine, syms: list[str], big: int = 3, mid: int = 6) -> dict:
+    """Wide Flow: Market Flow lines + bullish / bearish split + tiered tiles (big cards with levels for the leaders)."""
+    f = flow(syms)
+    items = f["items"]
+
+    def rank(side):
+        pool = [i for i in items if (i["chg"] > 0 if side > 0 else i["chg"] < 0)]
+        # strongest first: real trend (not choppy) in the same direction, then strength, then size of move
+        return sorted(pool, key=lambda i: (not i["choppy"] and i["direction"] == side, i["strength"], abs(i["chg"])), reverse=True)
+
+    out = {}
+    for side, key in ((1, "bull"), (-1, "bear")):
+        lst = rank(side)
+        for n, it in enumerate(lst):
+            it["rank"] = n + 1
+            it["tier"] = "big" if n < big else "mid" if n < big + mid else "small"
+        for it in lst[:big]:
+            st = MARKET.stocks.get(it["sym"])
+            if not st:
+                continue
+            try:
+                c = card(engine, st)
+            except Exception:
+                continue
+            sig = c.get("sig") or {}
+            it["card"] = {"S": c["S"][:2], "R": c["R"][:2], "zone": sig.get("zone"), "rr": sig.get("rr1"),
+                          "action": sig.get("action"), "conf": sig.get("confidence"), "entry": sig.get("entry"),
+                          "sl": sig.get("sl"), "t1": sig.get("t1"), "candles": c["candles"][-48:],
+                          "obs": c["obs"][:2], "vwap": c["vwap"][-48:]}
+        out[key] = [i["sym"] for i in lst]
+    f["bull_list"], f["bear_list"] = out["bull"], out["bear"]
+    f["flat"] = sum(1 for i in items if i["chg"] == 0)
+    return f
 
 
 def _clean(v: str) -> str:

@@ -444,6 +444,12 @@ async def flow(request):
     return J(await run_in_threadpool(V.flow, list(syms)))
 
 
+async def wideflow(request):
+    view = request.query_params.get("view", "nifty50")
+    syms = W.user_list(uid_of(request)) if view == "watchlist" else MARKET.groups.get(view, [])
+    return J(await run_in_threadpool(V.wide_flow, ENGINE, list(syms)))
+
+
 async def watch_import(request):
     """Bulk add shares from an Excel (.xlsx) or CSV file sent as the request body."""
     uid = uid_of(request)
@@ -789,7 +795,7 @@ def build_app(feed, engine, brokers, feed_src, restart):
         Route("/api/status", status), Route("/api/board", board), Route("/api/search", search),
         Route("/api/watchlist", watchlist, methods=["POST"]),
         Route("/api/watchlist/import", watch_import, methods=["POST"]),
-        Route("/api/grid", grid), Route("/api/flow", flow), Route("/api/account", account),
+        Route("/api/grid", grid), Route("/api/flow", flow), Route("/api/wideflow", wideflow), Route("/api/account", account),
         Route("/api/settings", settings_ep, methods=["GET", "POST"]), Route("/api/planner", planner),
         Route("/api/radar", radar), Route("/api/price_alerts", price_alerts, methods=["GET", "POST", "DELETE"]),
         Route("/api/trades.csv", trades_csv),
