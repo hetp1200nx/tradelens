@@ -30,6 +30,7 @@
   <nav class="tabs">
     <button data-tab="boards" class="on">Boards</button>
     <button data-tab="flow">Market Flow</button>
+    <button data-tab="wide">Wide Flow</button>
     <button data-tab="planner">Trade Planner</button>
     <button data-tab="account">Angel Account</button>
     <button data-tab="journal">My Trades</button>
@@ -113,6 +114,37 @@
       </div>
     </div>
     <div class="note" style="padding:10px 2px">Each line is one share's move since the open (% from yesterday's close), updating live. Green ends above 0, red below. Hover a line to see the share; tap a card to open it. Cards show the last 2 hours of 5-minute volume: green bars = buying candles, red = selling candles.</div>
+  </section>
+
+  <!-- WIDE FLOW -->
+  <section id="tab-wide" class="hidden">
+    <div class="bar">
+      <div class="seg" id="wfSeg">
+        <button data-v="sensex">Sensex</button><button data-v="nifty50">Nifty 50</button><button data-v="watchlist" class="on">Volatile Watchlist</button>
+      </div>
+      <span class="fstat" id="wfLead"></span><span class="fstat" id="wfLag"></span>
+      <div class="grow"></div>
+      <span class="fcount up" id="wfBull"></span><span class="fcount down" id="wfBear"></span>
+      <span class="fstat muted" id="wfTime"></span>
+      <button class="btn sm" id="wfFull" title="Full screen">⛶ Full screen</button>
+    </div>
+    <div class="wf" id="wf">
+      <div class="wf-sec" id="wfSectors"></div>
+      <div class="wf-lines"><canvas id="wfLines"></canvas><div class="fhint" id="wfHint"></div></div>
+      <div class="wf-tree"></div>
+      <div class="wf-wall">
+        <div class="wf-half bull">
+          <div class="wf-small" id="wfBullS"></div><div class="wf-mid" id="wfBullM"></div><div class="wf-big" id="wfBullB"></div>
+        </div>
+        <div class="wf-half bear">
+          <div class="wf-small" id="wfBearS"></div><div class="wf-mid" id="wfBearM"></div><div class="wf-big" id="wfBearB"></div>
+        </div>
+      </div>
+      <canvas class="wf-links" id="wfLinks"></canvas>
+    </div>
+    <div class="note" style="padding:10px 2px">Left: sectors ranked by average move. Lines: every share's move since the open, flowing into the bullish / bearish split.
+      Right: every share as a live tile, strongest at the right. Big cards show support, entry zone, resistance and risk-reward from the intraday rules.
+      Tile colour strength follows the share's strength score. Tap any tile or line to open the share. Updates every 3 seconds.</div>
   </section>
 
   <!-- PLANNER -->

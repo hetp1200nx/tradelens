@@ -107,7 +107,7 @@ function setTab(t) {
   S.tab = t;
   if (S.sym) closeDetail();
   $$("nav.tabs button[data-tab]").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
-  ["boards", "flow", "planner", "account", "journal", "radar", "score", "profile", "admin"].forEach(x => $("#tab-" + x).classList.toggle("hidden", x !== t));
+  ["boards", "flow", "wide", "planner", "account", "journal", "radar", "score", "profile", "admin"].forEach(x => $("#tab-" + x).classList.toggle("hidden", x !== t));
   if (t === "journal") loadTrades();
   if (t === "score") loadScore();
   if (t === "planner") loadPlanner();
@@ -116,6 +116,8 @@ function setTab(t) {
   if (t === "profile") loadProfile();
   if (t === "admin") loadAdmin();
   if (t === "flow") { $("#flowSeg button.on") ; loadFlow(); }
+  $("main").classList.toggle("wide", t === "wide");
+  if (t === "wide") loadWide();
   if (t === "boards" && S.layout === "grid") setTimeout(fetchCards, 100);
   if (t === "boards" && S.board) renderBoard();
   if ((prev === "account") !== (t === "account")) openStream();
@@ -1291,7 +1293,7 @@ function redrawCards() {
   const rows = Object.fromEntries((S.board?.rows || []).map(r => [r.sym, r]));
   S.visible.forEach(sym => { const el = S.cardEls[sym], d = S.cardData[sym]; if (el && d) fillCard(el, d, rows[sym]); });
 }
-window.addEventListener("resize", () => { clearTimeout(S.rzT); S.rzT = setTimeout(() => { redrawCards(); if (S.flow) drawFlow(); }, 200); });
+window.addEventListener("resize", () => { clearTimeout(S.rzT); S.rzT = setTimeout(() => { redrawCards(); if (S.flow) drawFlow(); if (S.wide && S.tab === "wide") drawWide(); }, 200); });
 $("#gridBox").addEventListener("click", (e) => {
   if (e.target.closest("[data-rm]")) return;
   const c = e.target.closest("[data-card]"); if (c) openDetail(c.dataset.card);
@@ -1387,6 +1389,204 @@ $("#flowCanvas").addEventListener("mousemove", (e) => {
 });
 $("#flowCanvas").addEventListener("mouseleave", () => { $("#flowHint").style.display = "none"; S.flowHover = null; drawFlow(); });
 $("#flowCanvas").addEventListener("click", () => { if (S.flowHover) openDetail(S.flowHover); });
+
+
+// ---------------------------------------------------------------- WIDE FLOW (flow lines -> split -> tiered tiles)
+S.wfView = "watchlist";
+$$("#wfSeg button").forEach(b => b.addEventListener("click", () => {
+  S.wfView = b.dataset.v; $$("#wfSeg button").forEach(x => x.classList.toggle("on", x === b)); S.wfSector = null; loadWide();
+}));
+async function loadWide() {
+  if (S.wfBusy) return; S.wfBusy = true;
+  try { S.wide = await api("/api/wideflow?view=" + S.wfView); renderWide(); } catch (e) {} finally { S.wfBusy = false; }
+}
+setInterval(() => { if (S.tab === "wide" && !S.sym && !document.hidden) loadWide(); }, 3000);
+$("#wfFull").addEventListener("click", () => {
+  const el = $("#tab-wide");
+  if (document.fullscreenElement) document.exitFullscreen(); else if (el.requestFullscreen) el.requestFullscreen();
+});
+document.addEventListener("fullscreenchange", () => { $("#wfFull").textContent = document.fullscreenElement ? "✕ Exit full screen" : "⛶ Full screen"; setTimeout(() => S.wide && drawWide(), 120); });
+
+function wfTile(it, tier) {
+  const dn = it.chg < 0, d = dn ? " dn" : "", dim = S.wfSector && it.sector !== S.wfSector ? " dim" : "";
+  const alpha = (0.07 + Math.min(1, (it.strength || 0) / 100) * 0.28).toFixed(3);
+  const st = `style="--a:${dn ? `rgba(255,92,99,${alpha})` : `rgba(31,201,138,${alpha})`}"`;
+  const oi = it.oi_signal ? ` · ${esc(it.oi_signal)}` : "";
+  if (tier === "small")
+    return `<div class="wt s${d}${dim}" ${st} data-fsym="${esc(it.sym)}" title="${esc(it.sym)} · ${esc(it.sector)} · ${sgn(it.chg)}%"><b>${esc(it.sym)}</b><span>${sgn(it.chg)}%</span><canvas data-vb></canvas></div>`;
+  if (tier === "mid")
+    return `<div class="wt m${d}${dim}" ${st} data-fsym="${esc(it.sym)}"><div class="h"><b>${esc(it.sym)}</b><em>#${it.rank}</em></div>
+      <div class="pc">${sgn(it.chg)}%</div><div class="sub">₹${nf(it.ltp)}${oi}</div><canvas data-sp></canvas></div>`;
+  const c = it.card || {}, lv = (k, v) => `<div>${k}<b>${v == null ? "–" : v}</b></div>`;
+  const zone = c.zone ? `${nf(c.zone[0])}–${nf(c.zone[1])}` : null;
+  const S1 = (c.S || [])[0], R1 = (c.R || [])[0], R2 = (c.R || [])[1];
+  const nz = (v) => v == null ? null : nf(v, Math.abs(v) >= 1000 ? 0 : 2);
+  const zone2 = c.zone ? `${nz(c.zone[0])}–${nz(c.zone[1])}` : null;
+  const act = c.action ? `<span class="tag ${c.action.startsWith("BUY") ? "up" : c.action.startsWith("SELL") ? "down" : ""}">${esc(c.action)}</span>` : "";
+  return `<div class="wt b${d}${dim}" data-fsym="${esc(it.sym)}">
+    <div class="info">
+      <div class="h"><b>${esc(it.sym)}</b><span class="tagc">${dn ? "BEARISH" : "BULLISH"}</span><span class="ring" style="--p:${Math.round(it.strength || 0)}" title="Strength"><span>${Math.round(it.strength || 0)}</span></span></div>
+      <div class="pc">${sgn(it.chg)}%</div>
+      <div class="px">${act}₹${nf(it.ltp)} ${sgn(it.ab_chg)}${oi} · #${it.rank} ${esc(it.sector)} · strength ${Math.round(it.strength || 0)}</div>
+      <div class="lvl">${lv(dn ? "Resist 1" : "Support 1", nz(dn ? R1 : S1))}${lv("Zone", zone2)}${lv(dn ? "Support 1" : "Resist 1", nz(dn ? S1 : R1))}
+        ${lv(dn ? "Support 2" : "Resist 2", nz(dn ? (c.S || [])[1] : R2))}${lv("VWAP", it.vwap ? nz(it.vwap) : null)}${lv("Risk:reward", c.rr ? "1:" + nf(c.rr, 1) : null)}</div>
+    </div>
+    <canvas data-ch></canvas></div>`;
+}
+function renderWide() {
+  const f = S.wide; if (!f) return;
+  $("#wfLead").innerHTML = f.leading ? `Leading <b>${esc(f.leading.sector)}</b> <span class="${cls(f.leading.chg)}">${sgn(f.leading.chg)}%</span>` : "";
+  $("#wfLag").innerHTML = f.lagging ? ` · Lagging <b>${esc(f.lagging.sector)}</b> <span class="${cls(f.lagging.chg)}">${sgn(f.lagging.chg)}%</span>` : "";
+  $("#wfBull").textContent = "▲ " + f.bull_count + " bullish"; $("#wfBear").textContent = "▼ " + f.bear_count + " bearish";
+  $("#wfTime").textContent = tstr(f.ts);
+  $("#wfSectors").innerHTML = f.sectors.map(x => `<div class="row ${S.wfSector === x.sector ? "on" : ""}" data-sec="${esc(x.sector)}"><b>${esc(x.sector)}</b><span class="num ${cls(x.chg)}">${sgn(x.chg)}%</span>
+    <div class="bb"><i style="width:${x.adv / x.n * 100}%;background:var(--up)"></i><i style="width:${(x.n - x.adv - x.dec) / x.n * 100}%"></i><i style="width:${x.dec / x.n * 100}%;background:var(--down)"></i></div></div>`).join("");
+  const by = S.wfBy = Object.fromEntries(f.items.map(i => [i.sym, i]));
+  const fill = (side, list) => {
+    const its = list.map(s => by[s]).filter(Boolean);
+    const big = its.filter(i => i.tier === "big"), mid = its.filter(i => i.tier === "mid"), small = its.filter(i => i.tier === "small");
+    // mirrored halves: bullish strongest at the top, bearish strongest at the bottom; weakest meet at the middle line
+    const sm = side === "Bear" ? small.slice().reverse() : small.slice();
+    $(`#wf${side}S`).innerHTML = sm.map(i => wfTile(i, "small")).join("") || "";
+    const m = side === "Bear" ? mid.slice().reverse() : mid, b = side === "Bear" ? big.slice().reverse() : big;
+    $(`#wf${side}M`).innerHTML = m.map(i => wfTile(i, "mid")).join("");
+    $(`#wf${side}B`).innerHTML = b.map(i => wfTile(i, "big")).join("") || `<div class="wf-empty">No ${side === "Bull" ? "bullish" : "bearish"} shares right now</div>`;
+  };
+  fill("Bull", f.bull_list); fill("Bear", f.bear_list);
+  requestAnimationFrame(drawWide);
+}
+function drawWide(hover) {
+  const f = S.wide; if (!f || S.tab !== "wide") return;
+  drawWideLines(hover);
+  $$("#wf .wt").forEach(el => {
+    const it = S.wfBy[el.dataset.fsym]; if (!it) return;
+    const vb = el.querySelector("canvas[data-vb]"), sp = el.querySelector("canvas[data-sp]"), ch = el.querySelector("canvas[data-ch]");
+    if (vb) wfBars(vb, it.vbars);
+    if (sp) wfSpark(sp, it);
+    if (ch) wfChart(ch, it);
+  });
+  drawWideLinks();
+}
+function wfBars(cv, vb) {
+  const s = sizeCanvas(cv); if (!s || !vb) return;
+  const { g, W, H } = s, P = TC(), n = vb.length || 1, w = W / Math.max(n, 12);
+  vb.forEach((v, i) => { const h = Math.max(1, Math.abs(v) * H); g.fillStyle = v >= 0 ? P.upA(.9) : P.downA(.9); g.fillRect(W - (n - i) * w, H - h, Math.max(1, w - .6), h); });
+}
+function wfSpark(cv, it) {
+  const s = sizeCanvas(cv); if (!s) return;
+  const { g, W, H } = s, P = TC(), vb = it.vbars || [], n = vb.length || 1, w = W / Math.max(n, 12);
+  vb.forEach((v, i) => { const h = Math.max(1, Math.abs(v) * H * .45); g.fillStyle = v >= 0 ? P.upA(.45) : P.downA(.45); g.fillRect(W - (n - i) * w, H - h, Math.max(1, w - .8), h); });
+  const p = it.path || []; if (p.length < 2) return;
+  const vals = p.map(q => q[1]), lo = Math.min(0, ...vals), hi = Math.max(0, ...vals), rg = (hi - lo) || 1;
+  const X = (i) => i / (p.length - 1) * (W - 2) + 1, Y = (v) => H - 3 - (v - lo) / rg * (H - 6);
+  g.strokeStyle = P.dim; g.globalAlpha = .5; g.setLineDash([2, 3]); g.beginPath(); g.moveTo(0, Y(0)); g.lineTo(W, Y(0)); g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
+  g.beginPath(); vals.forEach((v, i) => i ? g.lineTo(X(i), Y(v)) : g.moveTo(X(i), Y(v)));
+  g.strokeStyle = it.chg >= 0 ? P.up : P.down; g.lineWidth = 1.4; g.stroke();
+}
+function wfChart(cv, it) {
+  const s = sizeCanvas(cv); if (!s) return;
+  const { g, W, H } = s, P = TC(), c = it.card || {}, cs = c.candles || [];
+  if (cs.length < 2) { g.fillStyle = P.dim; g.font = "10px JetBrains Mono, monospace"; g.fillText("waiting for candles…", 4, H / 2); return; }
+  const lv = [...(c.S || []), ...(c.R || [])].filter(Boolean);
+  let lo = Math.min(...cs.map(q => q[3]), ...lv), hi = Math.max(...cs.map(q => q[2]), ...lv);
+  (c.obs || []).forEach(o => { lo = Math.min(lo, o.bottom); hi = Math.max(hi, o.top); });
+  const pad = (hi - lo) * .06 || 1; lo -= pad; hi += pad;
+  const right = 40, Y = (v) => 4 + (hi - v) / (hi - lo) * (H - 8), w = (W - right) / cs.length, X = (i) => i * w + w / 2;
+  (c.obs || []).forEach(o => { const bull = o.kind ? o.kind === "bull" : o.type !== "bear"; g.fillStyle = bull ? P.upA(.16) : P.downA(.16);
+    g.fillRect(0, Y(o.top), W - right, Math.max(2, Y(o.bottom) - Y(o.top))); });
+  g.font = "9px JetBrains Mono, monospace"; g.textBaseline = "middle";
+  const lab = (v, col, t) => { const y = Y(v); g.strokeStyle = col; g.globalAlpha = .7; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(0, y); g.lineTo(W - right, y); g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
+    g.fillStyle = col; g.fillText(t, W - right + 3, y); };
+  (c.S || []).forEach((v, i) => v && lab(v, P.up, "S" + (i + 1)));
+  (c.R || []).forEach((v, i) => v && lab(v, P.down, "R" + (i + 1)));
+  const vw = (c.vwap || []).slice(-cs.length);
+  g.strokeStyle = "#4fb3ff"; g.lineWidth = 1; g.globalAlpha = .8; g.beginPath(); let st = false;
+  vw.forEach((v, i) => { if (v == null) return; st ? g.lineTo(X(i), Y(v)) : g.moveTo(X(i), Y(v)); st = true; }); g.stroke(); g.globalAlpha = 1;
+  cs.forEach((q, i) => { const up = q[4] >= q[1], x = X(i); g.strokeStyle = g.fillStyle = up ? P.up : P.down;
+    g.beginPath(); g.moveTo(x, Y(q[2])); g.lineTo(x, Y(q[3])); g.stroke();
+    const y1 = Y(Math.max(q[1], q[4])), y2 = Y(Math.min(q[1], q[4])); g.fillRect(x - Math.max(1, w * .32), y1, Math.max(1.5, w * .64), Math.max(1, y2 - y1)); });
+  const last = cs[cs.length - 1][4], y = Y(last); g.fillStyle = it.chg >= 0 ? P.up : P.down; g.fillRect(W - right + 1, y - 7, right - 1, 14);
+  g.fillStyle = P.onPrice; g.font = "bold 9px JetBrains Mono, monospace"; g.fillText(nf(last), W - right + 3, y);
+}
+function drawWideLines(hover) {
+  const f = S.wide, cv = $("#wfLines"); if (!f || !cv) return;
+  const s = sizeCanvas(cv); if (!s) return;
+  const { g, W, H } = s, P = TC(), barW = 12, barX = W - barW - 4, slots = Math.min(f.slots, Math.max(18, f.now_slot + 3));
+  const L = 30, R = barX - 34, X = (k) => L + k / slots * (R - L);
+  g.font = "9px JetBrains Mono, monospace"; g.textBaseline = "middle";
+  [-3, -2, -1, 0, 1, 2, 3].forEach(v => { const y = fy(v, H); g.strokeStyle = v === 0 ? P.dim : P.grid; g.globalAlpha = v === 0 ? .8 : 1;
+    g.beginPath(); g.moveTo(L - 4, y); g.lineTo(R, y); g.stroke(); g.globalAlpha = 1; g.fillStyle = P.dim; g.fillText((v > 0 ? "+" : "") + v + "%", 0, y); });
+  for (let m = 75; m <= 375; m += 60) { const k = m / 5 - 3; if (k > slots) break; const x = X(k); g.fillStyle = P.dim; g.fillText(`${9 + Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`, x - 12, H - 6); }
+  // split bar: bullish share of the list on top, bearish below
+  const tot = Math.max(1, f.bull_count + f.bear_count), top = 14, bot = H - 18, mid = top + (bot - top) * f.bull_count / tot;
+  S.wfSplit = { x: barX + barW, top, mid, bot };
+  const gr1 = g.createLinearGradient(0, top, 0, mid); gr1.addColorStop(0, P.upA(.95)); gr1.addColorStop(1, P.upA(.35));
+  const gr2 = g.createLinearGradient(0, mid, 0, bot); gr2.addColorStop(0, P.downA(.35)); gr2.addColorStop(1, P.downA(.95));
+  g.fillStyle = gr1; g.fillRect(barX, top, barW, Math.max(0, mid - top - 1)); g.fillStyle = gr2; g.fillRect(barX, mid + 1, barW, Math.max(0, bot - mid - 1));
+  g.save(); g.font = "bold 13px JetBrains Mono, monospace"; g.textAlign = "right";
+  g.fillStyle = P.up; g.fillText(String(f.bull_count), barX - 4, top + 8); g.fillStyle = P.down; g.fillText(String(f.bear_count), barX - 4, bot - 8); g.restore();
+  // lines: each share's path, then a curve into its slot on the split bar (ordered by current move)
+  const items = f.items.filter(i => i.path.length).slice().sort((a, b) => b.chg - a.chg);
+  const nB = items.filter(i => i.chg >= 0).length, nD = items.length - nB;
+  const hot = new Set([...f.bull_list.slice(0, 9), ...f.bear_list.slice(0, 9)]);
+  S.wfPts = [];
+  let ib = 0, id = 0;
+  const order = items.map(it => { const pos = it.chg >= 0; const ty = pos ? top + (mid - top) * ((ib++ + .5) / Math.max(1, nB)) : mid + (bot - mid) * ((id++ + .5) / Math.max(1, nD)); return [it, ty]; });
+  order.sort((a, b) => (hot.has(a[0].sym) ? 1 : 0) - (hot.has(b[0].sym) ? 1 : 0));
+  order.forEach(([it, ty]) => {
+    const pos = it.chg >= 0, inSec = !S.wfSector || it.sector === S.wfSector, isH = hover === it.sym;
+    g.beginPath(); g.moveTo(X(0), fy(0, H));
+    it.path.forEach(([k, v]) => g.lineTo(X(k + 1), fy(v, H)));
+    const [k, v] = it.path[it.path.length - 1], ex = X(k + 1), ey = fy(v, H);
+    g.bezierCurveTo(ex + (barX - ex) * .5, ey, ex + (barX - ex) * .5, ty, barX, ty);
+    g.strokeStyle = pos ? P.up : P.down;
+    g.globalAlpha = isH ? 1 : !inSec ? .04 : hot.has(it.sym) ? .8 : S.wfSector ? .65 : .2;
+    g.lineWidth = isH ? 2.4 : hot.has(it.sym) || S.wfSector ? 1.3 : .8; g.stroke();
+    S.wfPts.push({ sym: it.sym, sector: it.sector, chg: it.chg, path: it.path });
+  });
+  g.globalAlpha = 1;
+  const nowX = X(f.now_slot + 1); g.strokeStyle = P.accent; g.globalAlpha = .45; g.setLineDash([3, 4]); g.beginPath(); g.moveTo(nowX, 8); g.lineTo(nowX, H - 14); g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
+  S.wfGeo = { L, R, slots, H, W };
+}
+function drawWideLinks() {
+  const cv = $("#wfLinks"), sp = S.wfSplit; if (!cv || !sp) return;
+  const s = sizeCanvas(cv); if (!s) return;
+  const { g } = s, P = TC(), box = $("#wf").getBoundingClientRect(), lines = $("#wfLines").getBoundingClientRect();
+  const sx = lines.left - box.left + sp.x, bullY = lines.top - box.top + (sp.top + sp.mid) / 2, bearY = lines.top - box.top + (sp.mid + sp.bot) / 2;
+  const hubX = sx + 22;
+  [[bullY, P.up, P.upA], [bearY, P.down, P.downA]].forEach(([y, col]) => { g.strokeStyle = col; g.globalAlpha = .9; g.lineWidth = 1.6; g.beginPath(); g.moveTo(sx, y); g.lineTo(hubX, y); g.stroke();
+    g.beginPath(); g.arc(hubX, y, 3, 0, 7); g.fillStyle = col; g.fill(); });
+  $$("#wf .wt").forEach(el => {
+    const r = el.getBoundingClientRect(); if (r.height < 4) return;
+    const sc = el.closest(".wf-small"); if (sc) { const sr = sc.getBoundingClientRect(); if (r.bottom < sr.top || r.top > sr.bottom) return; }
+    const dn = el.classList.contains("dn"), y0 = dn ? bearY : bullY, tx = r.left - box.left, ty = r.top - box.top + r.height / 2;
+    const big = el.classList.contains("b"), mid = el.classList.contains("m"), dim = el.classList.contains("dim");
+    g.strokeStyle = dn ? P.down : P.up; g.globalAlpha = dim ? .03 : big ? .55 : mid ? .32 : .09; g.lineWidth = big ? 1.4 : mid ? 1 : .6;
+    g.beginPath(); g.moveTo(hubX, y0); const cx = hubX + Math.min(60, (tx - hubX) * .35); g.bezierCurveTo(cx, y0, cx, ty, tx, ty); g.stroke();
+  });
+  g.globalAlpha = 1;
+}
+$("#wfSectors").addEventListener("click", (e) => {
+  const r = e.target.closest("[data-sec]"); if (!r) return;
+  S.wfSector = S.wfSector === r.dataset.sec ? null : r.dataset.sec; renderWide();
+});
+$("#tab-wide").addEventListener("click", (e) => { const c = e.target.closest("[data-fsym]"); if (c) openDetail(c.dataset.fsym); });
+$$("#wf .wf-small").forEach(el => el.addEventListener("scroll", () => { cancelAnimationFrame(S.wfRaf); S.wfRaf = requestAnimationFrame(drawWideLinks); }));
+$("#wfLines").addEventListener("mousemove", (e) => {
+  const G = S.wfGeo; if (!S.wfPts || !G) return;
+  const r = e.target.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+  const k = (mx - G.L) / (G.R - G.L) * G.slots - 1;
+  let best = null, bd = 12;
+  S.wfPts.forEach(p => { const pt = p.path.reduce((a, q) => Math.abs(q[0] - k) < Math.abs(a[0] - k) ? q : a, p.path[0]); if (!pt) return;
+    const d = Math.abs(fy(pt[1], G.H) - my); if (d < bd) { bd = d; best = p; } });
+  const h = $("#wfHint");
+  if (best && mx < G.R + 10) { h.style.display = "block"; h.style.left = Math.min(mx + 12, G.W - 170) + "px"; h.style.top = (my - 10) + "px";
+    h.innerHTML = `<b>${esc(best.sym)}</b> · ${esc(best.sector)} · <span class="${cls(best.chg)}">${sgn(best.chg)}%</span>`;
+    if (S.wfHover !== best.sym) { S.wfHover = best.sym; drawWideLines(best.sym); } }
+  else { h.style.display = "none"; if (S.wfHover) { S.wfHover = null; drawWideLines(); } }
+});
+$("#wfLines").addEventListener("mouseleave", () => { $("#wfHint").style.display = "none"; if (S.wfHover) { S.wfHover = null; drawWideLines(); } });
+$("#wfLines").addEventListener("click", () => { if (S.wfHover) openDetail(S.wfHover); });
 
 // ---------------------------------------------------------------- Excel / CSV import into the watchlist
 $("#importTpl").href = "data:text/csv;charset=utf-8," + encodeURIComponent("Symbol\nRELIANCE\nTATASTEEL\nIRFC\n");
