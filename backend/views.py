@@ -34,10 +34,23 @@ def _levels(c5, price, pdh, pdl, day_open):
     return uniq(lows, True), uniq(highs, False)
 
 
+def _session(st, now) -> list[dict]:
+    """Candles of the current session; if it has (almost) none - weekend, holiday, before 9:15 - the last full session."""
+    today = [dict(c) for c in st.today_candles(now)]
+    if len(today) >= 3 or not st.m1:
+        return today
+    start = A.ist_day_start(today[0]["t"]) if today else A.ist_day_start(now) + 86400
+    prev = [c for c in st.m1 if c["t"] < start]
+    if not prev:
+        return today
+    day = A.ist_day_start(prev[-1]["t"])
+    return [dict(c) for c in prev if c["t"] >= day]
+
+
 def card(engine, st) -> dict:
     now = MARKET.clock()
     with LOCK:
-        today = [dict(c) for c in st.today_candles(now)]
+        today = _session(st, now)
         price = st.ltp
         pdh = st.daily[-1]["h"] if st.daily else None
         pdl = st.daily[-1]["l"] if st.daily else None
@@ -71,7 +84,7 @@ def flow(syms: list[str]) -> dict:
         if not st or not st.metrics:
             continue
         with LOCK:
-            today = [dict(c) for c in st.today_candles(now)]
+            today = _session(st, now)
             m = dict(st.metrics)
         pc = m.get("prev_close") or st.prev_close or 0
         if not pc:
